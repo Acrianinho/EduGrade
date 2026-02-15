@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Plus, GraduationCap, ChevronLeft, Trash2, 
   UserPlus, Sparkles, X, Users, ListPlus, Star, Edit3,
@@ -28,6 +28,13 @@ const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState<boolean>(checkConnectivity());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   
+  // Refs para sempre ter acesso ao estado mais recente dentro de callbacks assíncronos
+  const schoolsRef = useRef(schools);
+  const classesRef = useRef(classes);
+
+  useEffect(() => { schoolsRef.current = schools; }, [schools]);
+  useEffect(() => { classesRef.current = classes; }, [classes]);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
@@ -44,11 +51,13 @@ const App: React.FC = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setIsLoggedIn(true);
+        // Tenta carregar do local primeiro para rapidez
         const savedClasses = localStorage.getItem('edugrade_v2_data');
         const savedSchools = localStorage.getItem('edugrade_v2_schools');
         if (savedClasses) setClasses(JSON.parse(savedClasses));
         if (savedSchools) setSchools(JSON.parse(savedSchools));
         
+        // Em seguida, busca do servidor para atualizar
         if (navigator.onLine) {
           const remote = await fetchRemoteData();
           if (remote) {
@@ -80,21 +89,22 @@ const App: React.FC = () => {
 
   const performSync = useCallback(async () => {
     if (!isOnline) {
-      // Tenta checar conectividade antes de desistir
       if (checkConnectivity()) setIsOnline(true);
-      else return;
+      else {
+        setSyncStatus('offline');
+        return;
+      }
     }
     setSyncStatus('syncing');
-    const success = await syncDataWithServer(schools, classes);
+    const success = await syncDataWithServer(schoolsRef.current, classesRef.current);
     setSyncStatus(success ? 'synced' : 'pending');
-  }, [isOnline, schools, classes]);
+  }, [isOnline]);
 
-  // Sincronização automática suave
   useEffect(() => {
     if (syncStatus === 'pending' && isOnline) {
       const timer = setTimeout(() => {
         performSync();
-      }, 5000);
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [syncStatus, isOnline, performSync]);
@@ -646,7 +656,6 @@ const App: React.FC = () => {
   };
 
   const renderSyncIndicator = () => {
-    // Definimos cores e ícones baseados no estado
     const config = {
       synced: {
         color: 'text-emerald-500 bg-emerald-50 border-emerald-100',
