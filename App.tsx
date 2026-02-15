@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Plus, GraduationCap, ChevronLeft, LayoutDashboard, Trash2, 
-  UserPlus, Sparkles, X, Users, ListPlus, Star, Info, Calendar, Edit3, FileText,
-  LogOut, Lock, Mail, ArrowRight, AlertCircle, Wifi, WifiOff, RefreshCw, CheckCircle2,
-  School as SchoolIcon, Archive, FolderOpen, Search, ArrowLeftRight, Loader2, Cloud, CloudUpload, CloudOff
+  Plus, GraduationCap, ChevronLeft, Trash2, 
+  UserPlus, Sparkles, X, Users, ListPlus, Star, Edit3,
+  LogOut, Lock, Mail, ArrowRight, AlertCircle, WifiOff, RefreshCw, CheckCircle2,
+  School as SchoolIcon, Archive, Cloud, CloudUpload, CloudOff, Loader2, ArrowLeftRight
 } from 'lucide-react';
 import { ClassRoom, Student, View, BimesterTab, GradePeriod, ActivityMeta, SyncStatus, School } from './types';
 import { Button } from './components/Button';
@@ -66,7 +66,10 @@ const App: React.FC = () => {
     init();
 
     const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSyncStatus('offline');
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -76,18 +79,22 @@ const App: React.FC = () => {
   }, []);
 
   const performSync = useCallback(async () => {
-    if (!isOnline) return;
+    if (!isOnline) {
+      // Tenta checar conectividade antes de desistir
+      if (checkConnectivity()) setIsOnline(true);
+      else return;
+    }
     setSyncStatus('syncing');
     const success = await syncDataWithServer(schools, classes);
     setSyncStatus(success ? 'synced' : 'pending');
   }, [isOnline, schools, classes]);
 
-  // Sincronização automática quando o status muda para pending
+  // Sincronização automática suave
   useEffect(() => {
     if (syncStatus === 'pending' && isOnline) {
       const timer = setTimeout(() => {
         performSync();
-      }, 3000);
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [syncStatus, isOnline, performSync]);
@@ -639,37 +646,56 @@ const App: React.FC = () => {
   };
 
   const renderSyncIndicator = () => {
-    if (!isOnline) return (
-      <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 animate-pulse">
-        <WifiOff className="w-4 h-4" />
-        <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Offline</span>
-      </div>
-    );
+    // Definimos cores e ícones baseados no estado
+    const config = {
+      synced: {
+        color: 'text-emerald-500 bg-emerald-50 border-emerald-100',
+        icon: <Cloud className="w-5 h-5" />,
+        badge: <CheckCircle2 className="w-3 h-3 absolute -bottom-1 -right-1 text-emerald-600 bg-white rounded-full" />,
+        label: 'Sincronizado',
+        clickable: false
+      },
+      syncing: {
+        color: 'text-amber-500 bg-amber-50 border-amber-100',
+        icon: <CloudUpload className="w-5 h-5 animate-pulse" />,
+        badge: <RefreshCw className="w-3 h-3 absolute -bottom-1 -right-1 text-amber-600 bg-white rounded-full animate-spin" />,
+        label: 'Enviando...',
+        clickable: true
+      },
+      pending: {
+        color: 'text-amber-500 bg-amber-50 border-amber-100',
+        icon: <CloudUpload className="w-5 h-5" />,
+        badge: <ArrowRight className="w-3 h-3 absolute -bottom-1 -right-1 text-amber-600 bg-white rounded-full rotate-[-45deg]" />,
+        label: 'Pendente',
+        clickable: true
+      },
+      offline: {
+        color: 'text-rose-500 bg-rose-50 border-rose-100',
+        icon: <CloudOff className="w-5 h-5" />,
+        badge: <X className="w-3 h-3 absolute -bottom-1 -right-1 text-rose-600 bg-white rounded-full" />,
+        label: 'Erro de Conexão',
+        clickable: true
+      }
+    };
 
-    switch(syncStatus) {
-      case 'syncing': return (
-        <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
-          <RefreshCw className="w-4 h-4 animate-spin" />
-          <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Sincronizando</span>
+    const current = config[syncStatus] || config.offline;
+
+    return (
+      <button 
+        disabled={!current.clickable}
+        onClick={performSync}
+        className={`relative flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all duration-300 group ${current.color} ${current.clickable ? 'hover:scale-105 active:scale-95 cursor-pointer' : 'cursor-default'}`}
+        title={current.label}
+      >
+        <div className="relative">
+          {current.icon}
+          {current.badge}
         </div>
-      );
-      case 'pending': return (
-        <button 
-          onClick={performSync}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100 hover:bg-amber-100 transition-all group"
-          title="Clique para sincronizar agora"
-        >
-          <CloudUpload className="w-4 h-4 group-hover:scale-110 transition-transform" />
-          <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Sincronizar Pendente</span>
-        </button>
-      );
-      case 'synced': default: return (
-        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100">
-          <CheckCircle2 className="w-4 h-4" />
-          <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Nuvem Sincronizada</span>
-        </div>
-      );
-    }
+        <span className="text-[10px] font-black uppercase tracking-[0.15em] hidden md:inline">
+          {current.label}
+        </span>
+      </button>
+    );
   };
 
   if (isLoading && !isLoggedIn) {
