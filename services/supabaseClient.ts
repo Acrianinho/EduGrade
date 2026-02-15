@@ -1,32 +1,30 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Função auxiliar para buscar variáveis de ambiente em diferentes contextos (Vite, Process, ImportMeta)
-const getEnv = (key: string): string => {
-  const env = (import.meta as any).env || {};
-  const proc = (typeof process !== 'undefined' ? (process as any).env : {}) || {};
-  return env[key] || proc[key] || '';
-};
+/**
+ * Configuração do Cliente Supabase
+ * 
+ * Utilizamos import.meta.env com acesso seguro para evitar erros de runtime
+ * caso o ambiente de execução não suporte a extensão de ambiente do Vite.
+ */
 
-// Busca pelas chaves padrões do Vite e também pelas chaves fornecidas (NEXT_PUBLIC)
-const supabaseUrl = 
-  getEnv('VITE_SUPABASE_URL') || 
-  getEnv('NEXT_PUBLIC_SUPABASE_URL') || 
-  getEnv('SUPABASE_URL');
+// Acesso seguro ao objeto env
+const env = (import.meta as any).env || (typeof process !== 'undefined' ? process.env : {}) || {};
 
-const supabaseAnonKey = 
-  getEnv('VITE_SUPABASE_ANON_KEY') || 
-  getEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY') || 
-  getEnv('SUPABASE_ANON_KEY');
+// Tentativa de obter as credenciais das variáveis de ambiente
+const supabaseUrl = env.VITE_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL;
+const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || env.SUPABASE_ANON_KEY;
 
-// O erro "supabaseUrl is required" ocorre se a string for vazia. 
-// Usamos um fallback apenas para evitar o crash imediato do script, 
-// mas a funcionalidade real depende das chaves estarem corretas no ambiente.
-if (!supabaseUrl) {
-  console.warn("Supabase URL não encontrada. Verifique as variáveis de ambiente.");
+// Credenciais fornecidas pelo usuário como fallback final para garantir funcionamento imediato
+const DEFAULT_URL = 'https://ukbatxpiwjqjdexaouna.supabase.co';
+const DEFAULT_KEY = 'sb_publishable_l0veVJ8Dj0Sv4HdpPz98oA_isMrVkel';
+
+const finalUrl = supabaseUrl || DEFAULT_URL;
+const finalKey = supabaseAnonKey || DEFAULT_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn("Aviso: Variáveis de ambiente Supabase não detectadas. Usando credenciais de fallback.");
 }
 
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder-project.supabase.co', 
-  supabaseAnonKey || 'placeholder-anon-key'
-);
+// Inicialização do cliente
+export const supabase = createClient(finalUrl, finalKey);
