@@ -4,7 +4,7 @@ import {
   Plus, GraduationCap, ChevronLeft, LayoutDashboard, Trash2, 
   UserPlus, Sparkles, X, Users, ListPlus, Star, Info, Calendar, Edit3, FileText,
   LogOut, Lock, Mail, ArrowRight, AlertCircle, Wifi, WifiOff, RefreshCw, CheckCircle2,
-  School as SchoolIcon, Archive, FolderOpen, Search, ArrowLeftRight, Loader2
+  School as SchoolIcon, Archive, FolderOpen, Search, ArrowLeftRight, Loader2, Cloud, CloudUpload, CloudOff
 } from 'lucide-react';
 import { ClassRoom, Student, View, BimesterTab, GradePeriod, ActivityMeta, SyncStatus, School } from './types';
 import { Button } from './components/Button';
@@ -56,6 +56,7 @@ const App: React.FC = () => {
             setClasses(remote.classes);
             localStorage.setItem('edugrade_v2_data', JSON.stringify(remote.classes));
             localStorage.setItem('edugrade_v2_schools', JSON.stringify(remote.schools));
+            setSyncStatus('synced');
           }
         }
       }
@@ -75,18 +76,21 @@ const App: React.FC = () => {
   }, []);
 
   const performSync = useCallback(async () => {
-    if (!isOnline || syncStatus !== 'pending') return;
+    if (!isOnline) return;
     setSyncStatus('syncing');
     const success = await syncDataWithServer(schools, classes);
     setSyncStatus(success ? 'synced' : 'pending');
-  }, [isOnline, syncStatus, schools, classes]);
+  }, [isOnline, schools, classes]);
 
+  // Sincronização automática quando o status muda para pending
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (syncStatus === 'pending') performSync();
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [syncStatus, performSync]);
+    if (syncStatus === 'pending' && isOnline) {
+      const timer = setTimeout(() => {
+        performSync();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [syncStatus, isOnline, performSync]);
 
   const notifyDataChange = (updatedClasses: ClassRoom[], updatedSchools?: School[]) => {
     const finalClasses = updatedClasses;
@@ -95,7 +99,7 @@ const App: React.FC = () => {
     if (updatedSchools) setSchools(finalSchools);
     localStorage.setItem('edugrade_v2_data', JSON.stringify(finalClasses));
     localStorage.setItem('edugrade_v2_schools', JSON.stringify(finalSchools));
-    setSyncStatus(isOnline ? 'pending' : 'offline');
+    setSyncStatus('pending');
   };
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -120,6 +124,7 @@ const App: React.FC = () => {
         setClasses(remote.classes);
         localStorage.setItem('edugrade_v2_data', JSON.stringify(remote.classes));
         localStorage.setItem('edugrade_v2_schools', JSON.stringify(remote.schools));
+        setSyncStatus('synced');
       }
       setIsLoggedIn(true);
       setView('schoolList');
@@ -635,28 +640,33 @@ const App: React.FC = () => {
 
   const renderSyncIndicator = () => {
     if (!isOnline) return (
-      <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-600 rounded-full border border-amber-100 animate-pulse">
-        <WifiOff className="w-3 h-3" />
-        <span className="text-[10px] font-black uppercase tracking-widest">Offline</span>
+      <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 animate-pulse">
+        <WifiOff className="w-4 h-4" />
+        <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Offline</span>
       </div>
     );
+
     switch(syncStatus) {
       case 'syncing': return (
-        <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
-          <RefreshCw className="w-3 h-3 animate-spin" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Cloud Sync</span>
+        <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Sincronizando</span>
         </div>
       );
       case 'pending': return (
-        <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full border border-slate-200">
-          <RefreshCw className="w-3 h-3" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Local-Only</span>
-        </div>
+        <button 
+          onClick={performSync}
+          className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100 hover:bg-amber-100 transition-all group"
+          title="Clique para sincronizar agora"
+        >
+          <CloudUpload className="w-4 h-4 group-hover:scale-110 transition-transform" />
+          <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Sincronizar Pendente</span>
+        </button>
       );
       case 'synced': default: return (
-        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
-          <CheckCircle2 className="w-3 h-3" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Nuvem OK</span>
+        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100">
+          <CheckCircle2 className="w-4 h-4" />
+          <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">Nuvem Sincronizada</span>
         </div>
       );
     }
