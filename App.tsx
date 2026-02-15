@@ -39,19 +39,16 @@ const App: React.FC = () => {
 
   const [isCreateSchoolModalOpen, setIsCreateSchoolModalOpen] = useState(false);
 
-  // Inicialização e Monitoramento
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setIsLoggedIn(true);
-        // Tenta carregar dados locais primeiro para ser rápido
         const savedClasses = localStorage.getItem('edugrade_v2_data');
         const savedSchools = localStorage.getItem('edugrade_v2_schools');
         if (savedClasses) setClasses(JSON.parse(savedClasses));
         if (savedSchools) setSchools(JSON.parse(savedSchools));
         
-        // Se online, puxa a versão mais recente do Supabase
         if (navigator.onLine) {
           const remote = await fetchRemoteData();
           if (remote) {
@@ -77,7 +74,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Sincronização Automática com Supabase
   const performSync = useCallback(async () => {
     if (!isOnline || syncStatus !== 'pending') return;
     setSyncStatus('syncing');
@@ -88,17 +84,15 @@ const App: React.FC = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (syncStatus === 'pending') performSync();
-    }, 5000); // 5 segundos de debounce para evitar excesso de requisições
+    }, 5000);
     return () => clearTimeout(timer);
   }, [syncStatus, performSync]);
 
   const notifyDataChange = (updatedClasses: ClassRoom[], updatedSchools?: School[]) => {
     const finalClasses = updatedClasses;
     const finalSchools = updatedSchools || schools;
-    
     setClasses(finalClasses);
     if (updatedSchools) setSchools(finalSchools);
-    
     localStorage.setItem('edugrade_v2_data', JSON.stringify(finalClasses));
     localStorage.setItem('edugrade_v2_schools', JSON.stringify(finalSchools));
     setSyncStatus(isOnline ? 'pending' : 'offline');
@@ -113,7 +107,6 @@ const App: React.FC = () => {
     const password = formData.get('password') as string;
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    
     if (error) {
       setAuthError(error.message);
       setIsLoading(false);
@@ -150,10 +143,8 @@ const App: React.FC = () => {
     }
 
     const { data, error } = await supabase.auth.signUp({ email, password });
-    
-    if (error) {
-      setAuthError(error.message);
-    } else if (data.user) {
+    if (error) setAuthError(error.message);
+    else if (data.user) {
       setIsLoggedIn(true);
       setView('schoolList');
     }
@@ -224,7 +215,45 @@ const App: React.FC = () => {
     setCurrentClass(updated);
   };
 
-  // Funções de Cálculo (Mantidas iguais para preservar funcionalidade)
+  const handleAddStudents = () => {
+    if (!currentClass) return;
+    const names = bulkStudentNames.split('\n').map(n => n.trim()).filter(n => n !== '');
+    const newStudents: Student[] = names.map(name => ({
+      id: crypto.randomUUID(),
+      name,
+      bimesters: {
+        1: { activities: Array(currentClass.activityCount).fill(null), exam: null, extra: null },
+        2: { activities: Array(currentClass.activityCount).fill(null), exam: null, extra: null },
+        3: { activities: Array(currentClass.activityCount).fill(null), exam: null, extra: null },
+        4: { activities: Array(currentClass.activityCount).fill(null), exam: null, extra: null },
+      },
+      rec1: null, rec2: null, finalExam: null
+    }));
+    updateClass({ ...currentClass, students: [...currentClass.students, ...newStudents] });
+    setBulkStudentNames('');
+    setIsAddStudentModalOpen(false);
+  };
+
+  const handleAddActivityColumn = () => {
+    if (!currentClass) return;
+    const newCount = currentClass.activityCount + 1;
+    const updatedMetadata = { ...currentClass.activityMetadata };
+    [1, 2, 3, 4].forEach(b => {
+      // @ts-ignore
+      updatedMetadata[b] = [...updatedMetadata[b], { date: '', content: '' }];
+    });
+    const updatedStudents = currentClass.students.map(student => ({
+      ...student,
+      bimesters: {
+        1: { ...student.bimesters[1], activities: [...student.bimesters[1].activities, null] },
+        2: { ...student.bimesters[2], activities: [...student.bimesters[2].activities, null] },
+        3: { ...student.bimesters[3], activities: [...student.bimesters[3].activities, null] },
+        4: { ...student.bimesters[4], activities: [...student.bimesters[4].activities, null] },
+      }
+    }));
+    updateClass({ ...currentClass, activityCount: newCount, activityMetadata: updatedMetadata, students: updatedStudents });
+  };
+
   const calcBimesterAvg = (period: GradePeriod) => {
     const validActs = period.activities.filter(v => v !== null) as number[];
     const avgActs = validActs.length > 0 ? validActs.reduce((a, b) => a + b, 0) / validActs.length : 0;
@@ -254,6 +283,23 @@ const App: React.FC = () => {
       return raw;
     }
     return raw;
+  };
+
+  const handleOpenEditActivity = (b: 1|2|3|4, idx: number) => {
+    if (!currentClass) return;
+    const meta = currentClass.activityMetadata[b][idx] || { date: '', content: '' };
+    setEditingActivity({ bimester: b, index: idx });
+    setTempMeta(meta);
+    setIsEditActivityModalOpen(true);
+  };
+
+  const handleSaveActivityMeta = () => {
+    if (!currentClass || !editingActivity) return;
+    const { bimester, index } = editingActivity;
+    const newMetadata = { ...currentClass.activityMetadata };
+    newMetadata[bimester][index] = tempMeta;
+    updateClass({ ...currentClass, activityMetadata: newMetadata });
+    setIsEditActivityModalOpen(false);
   };
 
   const renderAuth = () => (
@@ -305,48 +351,6 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderSyncIndicator = () => {
-    if (!isOnline) return (
-      <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-600 rounded-full border border-amber-100 animate-pulse">
-        <WifiOff className="w-3 h-3" />
-        <span className="text-[10px] font-black uppercase tracking-widest">Offline</span>
-      </div>
-    );
-    switch(syncStatus) {
-      case 'syncing': return (
-        <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
-          <RefreshCw className="w-3 h-3 animate-spin" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Cloud Sync</span>
-        </div>
-      );
-      case 'pending': return (
-        <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full border border-slate-200">
-          <RefreshCw className="w-3 h-3" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Local-Only</span>
-        </div>
-      );
-      case 'synced': default: return (
-        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
-          <CheckCircle2 className="w-3 h-3" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Nuvem OK</span>
-        </div>
-      );
-    }
-  };
-
-  if (isLoading && !isLoggedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
-
-  if (!isLoggedIn) return renderAuth();
-
-  // O restante dos renderers (renderSchoolList, renderClassList, renderArchive, renderDetail) permanece igual
-  // Mas agora operam sobre dados que podem ter sido carregados do Supabase no login
-  
   const renderSchoolList = () => (
     <div className="space-y-10 animate-in fade-in duration-500">
       <div className="text-center max-w-2xl mx-auto space-y-4">
@@ -439,6 +443,235 @@ const App: React.FC = () => {
     );
   };
 
+  const renderArchive = () => {
+    const archivedClasses = classes.filter(c => c.schoolId === selectedSchoolId && c.status === 'archived');
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => setView('list')} className="rounded-2xl hover:bg-white"><ChevronLeft className="w-5 h-5 mr-2" /> Voltar</Button>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Arquivadas</h1>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {archivedClasses.map(cls => (
+            <div key={cls.id} className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-dashed border-slate-200 grayscale opacity-70">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="font-black text-2xl text-slate-500">{cls.name}</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => handleRestoreClass(cls.id)} className="text-emerald-500 hover:bg-emerald-50 p-2 rounded-xl"><RefreshCw className="w-5 h-5" /></button>
+                  <button onClick={() => { if(confirm('Excluir?')) notifyDataChange(classes.filter(c => c.id !== cls.id)); }} className="text-rose-400 hover:bg-rose-50 p-2 rounded-xl"><Trash2 className="w-5 h-5" /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderDetail = () => {
+    if (!currentClass) return null;
+    return (
+      <div className="space-y-6 animate-in slide-in-from-top-2 duration-300">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-center">
+            <Button variant="ghost" onClick={() => setView('list')} className="mr-4 hover:bg-slate-200"><ChevronLeft className="w-5 h-5" /></Button>
+            <div>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">{currentClass.name}</h2>
+              <p className="text-sm font-bold text-indigo-600 uppercase tracking-widest">{currentClass.subject}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {activeTab !== 'annual' && (
+              <Button variant="secondary" onClick={handleAddActivityColumn} size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700 border-none">
+                <ListPlus className="w-4 h-4 mr-2" /> + Atividade
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setIsAddStudentModalOpen(true)} size="sm" className="font-bold border-slate-300"><UserPlus className="w-4 h-4 mr-2" /> Importar Alunos</Button>
+            <Button disabled={!isOnline} onClick={async () => { setIsAnalyzing(true); setAiReport(await analyzeClassPerformance(currentClass)); setIsAnalyzing(false); }} size="sm" className={`bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 border-none text-white shadow-md ${!isOnline && 'opacity-50 grayscale'}`}>
+              <Sparkles className="w-4 h-4 mr-2" /> {isAnalyzing ? 'Analisando...' : 'IA Mentor'}
+            </Button>
+          </div>
+        </div>
+        <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar bg-white rounded-t-3xl px-4 pt-4">
+          {[1, 2, 3, 4, 'annual'].map(t => (
+            <button key={t} onClick={() => { setActiveTab(t as BimesterTab); setAiReport(null); }} className={`px-8 py-4 text-sm font-black whitespace-nowrap transition-all border-b-4 ${activeTab === t ? 'border-indigo-600 text-indigo-600 translate-y-px' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+              {t === 'annual' ? 'CONSOLIDADO ANUAL' : `${t}º BIMESTRE`}
+            </button>
+          ))}
+        </div>
+        {aiReport && (
+          <div className="bg-slate-900 p-8 rounded-3xl border border-indigo-500/30 shadow-2xl relative text-white animate-in zoom-in duration-300">
+            <button onClick={() => setAiReport(null)} className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
+            <div className="flex items-center gap-3 mb-6 text-indigo-400 font-black uppercase tracking-[0.2em] text-xs"><Sparkles className="w-5 h-5" /> Relatório Estratégico IA</div>
+            <div className="prose prose-invert prose-indigo max-w-none text-slate-300 leading-relaxed whitespace-pre-wrap font-medium">{aiReport}</div>
+          </div>
+        )}
+        <div className="bg-white rounded-b-3xl border border-slate-200 shadow-xl overflow-hidden mb-20">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm border-collapse">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-8 py-5 font-black text-slate-700 min-w-[260px] sticky left-0 bg-slate-50 z-20 shadow-[4px_0_10px_rgba(0,0,0,0.03)] uppercase tracking-wider">Estudante</th>
+                  {activeTab !== 'annual' ? (
+                    <>
+                      {Array.from({ length: currentClass.activityCount }).map((_, i) => {
+                        const meta = currentClass.activityMetadata[activeTab as 1|2|3|4]?.[i];
+                        return (
+                          <th key={i} onClick={() => handleOpenEditActivity(activeTab as 1|2|3|4, i)} className="px-3 py-5 text-center w-28 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:bg-slate-100 transition-colors group relative">
+                            <div className="flex flex-col items-center gap-1">
+                               <span>Ativ {i + 1}</span>
+                               {meta?.date && <span className="text-[8px] text-indigo-500 bg-indigo-50 px-1 rounded">{meta.date}</span>}
+                               <Edit3 className="w-3 h-3 opacity-0 group-hover:opacity-100 absolute top-2 right-2 text-indigo-400" />
+                            </div>
+                          </th>
+                        );
+                      })}
+                      <th className="px-3 py-5 text-center w-28 bg-indigo-50 font-black text-indigo-700 uppercase tracking-widest">Prova</th>
+                      <th className="px-3 py-5 text-center w-24 bg-amber-50 font-black text-amber-700 uppercase tracking-widest">
+                        <div className="flex flex-col items-center"><Star className="w-4 h-4 mb-1" /><span>Extra</span></div>
+                      </th>
+                      <th className="px-8 py-5 text-center w-40 font-black text-indigo-900 bg-indigo-100 uppercase tracking-widest">Média Bim.</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-3 py-5 text-center font-bold text-slate-400 uppercase tracking-tighter">B1</th>
+                      <th className="px-3 py-5 text-center font-bold text-slate-400 uppercase tracking-tighter">B2</th>
+                      <th className="px-3 py-5 text-center bg-amber-50 text-amber-700 font-black uppercase tracking-tighter">REC 1</th>
+                      <th className="px-3 py-5 text-center font-bold text-slate-400 uppercase tracking-tighter">B3</th>
+                      <th className="px-3 py-5 text-center font-bold text-slate-400 uppercase tracking-tighter">B4</th>
+                      <th className="px-3 py-5 text-center bg-amber-50 text-amber-700 font-black uppercase tracking-tighter">REC 2</th>
+                      <th className="px-6 py-5 text-center font-black bg-indigo-50 text-indigo-700 uppercase tracking-tighter">Soma</th>
+                      <th className="px-3 py-5 text-center bg-rose-50 text-rose-700 font-black uppercase tracking-tighter">P. Final</th>
+                      <th className="px-8 py-5 text-center font-black text-white bg-slate-900 uppercase tracking-widest">Resultado</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {currentClass.students.map(student => {
+                  if (activeTab === 'annual') {
+                    const b1 = getEffectiveBimesterGrade(student, 1);
+                    const b2 = getEffectiveBimesterGrade(student, 2);
+                    const b3 = getEffectiveBimesterGrade(student, 3);
+                    const b4 = getEffectiveBimesterGrade(student, 4);
+                    const totalSoma = b1 + b2 + b3 + b4;
+                    const mediaAnual = totalSoma / 4;
+                    const needsFinal = mediaAnual < 7;
+                    const mediaFinal = needsFinal ? (mediaAnual + (student.finalExam || 0)) / 2 : mediaAnual;
+                    const approved = mediaFinal >= 5;
+                    return (
+                      <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-8 py-5 font-bold text-slate-800 sticky left-0 bg-white z-20 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">{student.name}</td>
+                        <td className="px-3 py-5 text-center text-slate-400 font-bold">{b1.toFixed(1)}</td>
+                        <td className="px-3 py-5 text-center text-slate-400 font-bold">{b2.toFixed(1)}</td>
+                        <td className="px-3 py-3 text-center bg-amber-50/30">
+                          <input type="number" step="0.1" className="w-16 text-center bg-slate-900 text-white border border-slate-700 rounded-xl py-2 font-black outline-none" value={student.rec1 ?? ''} onChange={e => {
+                            const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                            updateClass({...currentClass, students: currentClass.students.map(s => s.id === student.id ? {...s, rec1: val} : s)});
+                          }} />
+                        </td>
+                        <td className="px-3 py-5 text-center text-slate-400 font-bold">{b3.toFixed(1)}</td>
+                        <td className="px-3 py-5 text-center text-slate-400 font-bold">{b4.toFixed(1)}</td>
+                        <td className="px-3 py-3 text-center bg-amber-50/30">
+                          <input type="number" step="0.1" className="w-16 text-center bg-slate-900 text-white border border-slate-700 rounded-xl py-2 font-black outline-none" value={student.rec2 ?? ''} onChange={e => {
+                            const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                            updateClass({...currentClass, students: currentClass.students.map(s => s.id === student.id ? {...s, rec2: val} : s)});
+                          }} />
+                        </td>
+                        <td className={`px-6 py-5 text-center font-black text-lg bg-indigo-50/30 ${totalSoma >= 28 ? 'text-green-600' : 'text-rose-600'}`}>{totalSoma.toFixed(1)}</td>
+                        <td className="px-3 py-3 text-center bg-rose-50/30">
+                          {needsFinal ? (
+                            <input type="number" step="0.1" className="w-16 text-center bg-slate-900 text-white border border-slate-700 rounded-xl py-2 font-black outline-none" value={student.finalExam ?? ''} onChange={e => {
+                              const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                              updateClass({...currentClass, students: currentClass.students.map(s => s.id === student.id ? {...s, finalExam: val} : s)});
+                            }} />
+                          ) : <span className="text-slate-300 font-black">OK</span>}
+                        </td>
+                        <td className="px-8 py-5 text-center bg-slate-900/5">
+                          <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.15em] shadow-sm ${approved ? 'bg-emerald-500 text-white' : 'bg-rose-600 text-white'}`}>{approved ? 'Aprovado' : 'Reprovado'}</span>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const bimesterKey = activeTab as 1 | 2 | 3 | 4;
+                  const period = student.bimesters[bimesterKey];
+                  const avg = calcBimesterAvg(period);
+                  return (
+                    <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-8 py-5 font-bold text-slate-800 sticky left-0 bg-white z-20 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">{student.name}</td>
+                      {period.activities.map((val, idx) => (
+                        <td key={idx} className="px-1.5 py-3 text-center">
+                          <input type="number" step="0.1" className="w-16 text-center bg-slate-900 text-white border border-slate-700 rounded-xl py-2 font-black outline-none" value={val ?? ''} onChange={e => {
+                            const newVal = e.target.value === '' ? null : parseFloat(e.target.value);
+                            const updatedActs = [...period.activities];
+                            updatedActs[idx] = newVal;
+                            updateClass({...currentClass, students: currentClass.students.map(s => s.id === student.id ? {...s, bimesters: {...s.bimesters, [bimesterKey]: {...period, activities: updatedActs}}} : s)});
+                          }} />
+                        </td>
+                      ))}
+                      <td className="px-1.5 py-3 text-center bg-indigo-50/50">
+                         <input type="number" step="0.1" className="w-16 text-center bg-slate-900 text-white border border-indigo-500/40 rounded-xl py-2 font-black outline-none" value={period.exam ?? ''} onChange={e => {
+                            const newVal = e.target.value === '' ? null : parseFloat(e.target.value);
+                            updateClass({...currentClass, students: currentClass.students.map(s => s.id === student.id ? {...s, bimesters: {...s.bimesters, [bimesterKey]: {...period, exam: newVal}}} : s)});
+                          }} />
+                      </td>
+                      <td className="px-1.5 py-3 text-center bg-amber-50/50">
+                         <input type="number" step="0.1" className="w-16 text-center bg-slate-900 text-white border border-amber-400/40 rounded-xl py-2 font-black outline-none" value={period.extra ?? ''} onChange={e => {
+                            const newVal = e.target.value === '' ? null : parseFloat(e.target.value);
+                            updateClass({...currentClass, students: currentClass.students.map(s => s.id === student.id ? {...s, bimesters: {...s.bimesters, [bimesterKey]: {...period, extra: newVal}}} : s)});
+                          }} />
+                      </td>
+                      <td className="px-8 py-5 text-center font-black text-indigo-700 bg-indigo-100/40 text-lg">{avg.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSyncIndicator = () => {
+    if (!isOnline) return (
+      <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-600 rounded-full border border-amber-100 animate-pulse">
+        <WifiOff className="w-3 h-3" />
+        <span className="text-[10px] font-black uppercase tracking-widest">Offline</span>
+      </div>
+    );
+    switch(syncStatus) {
+      case 'syncing': return (
+        <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          <span className="text-[10px] font-black uppercase tracking-widest">Cloud Sync</span>
+        </div>
+      );
+      case 'pending': return (
+        <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-full border border-slate-200">
+          <RefreshCw className="w-3 h-3" />
+          <span className="text-[10px] font-black uppercase tracking-widest">Local-Only</span>
+        </div>
+      );
+      case 'synced': default: return (
+        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
+          <CheckCircle2 className="w-3 h-3" />
+          <span className="text-[10px] font-black uppercase tracking-widest">Nuvem OK</span>
+        </div>
+      );
+    }
+  };
+
+  if (isLoading && !isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) return renderAuth();
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans selection:bg-indigo-600 selection:text-white pb-20">
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-[100] px-8 h-20 flex items-center justify-between shadow-sm backdrop-blur-md bg-white/90">
@@ -447,7 +680,6 @@ const App: React.FC = () => {
           <div><span className="font-black text-2xl tracking-tighter block leading-none">EduGrade</span>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full tracking-widest uppercase">Professor Pro</span>
-              <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full truncate max-w-[120px]">{supabase.auth.getUser() ? "Cloud Account" : "Local User"}</span>
             </div>
           </div>
         </div>
@@ -462,6 +694,7 @@ const App: React.FC = () => {
       <main className="max-w-7xl mx-auto p-4 md:p-10">
         {view === 'schoolList' && renderSchoolList()}
         {view === 'list' && renderClassList()}
+        {view === 'archive' && renderArchive()}
         {view === 'create' && (
           <div className="max-w-xl mx-auto bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 animate-in zoom-in slide-in-from-bottom-10 duration-500">
             <h2 className="text-3xl font-black mb-10 text-slate-900 tracking-tight text-center">Configurar Turma</h2>
@@ -476,30 +709,51 @@ const App: React.FC = () => {
             </form>
           </div>
         )}
-        {view === 'detail' && currentClass && (
-            <div className="space-y-6">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex items-center">
-                    <Button variant="ghost" onClick={() => setView('list')} className="mr-4 hover:bg-slate-200"><ChevronLeft className="w-5 h-5" /></Button>
-                    <div><h2 className="text-2xl font-black text-slate-900 tracking-tight">{currentClass.name}</h2><p className="text-sm font-bold text-indigo-600 uppercase tracking-widest">{currentClass.subject}</p></div>
-                  </div>
-                </div>
-                {/* Tabela e lógica de notas (omitido aqui por brevidade, mas mantido no seu sistema funcional) */}
-                <p className="p-8 bg-white rounded-3xl border border-slate-100 text-slate-400 font-bold">Visualização Detalhada Ativa. Edite as notas diretamente na planilha integrada.</p>
-            </div>
-        )}
+        {view === 'detail' && renderDetail()}
       </main>
 
-      {/* Modais de Escola (Mantido o original funcional) */}
       {isCreateSchoolModalOpen && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[200] flex items-center justify-center p-6">
-          <div className="bg-white w-full max-md rounded-[3rem] shadow-2xl p-10">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-10">
              <form onSubmit={handleCreateSchool} className="space-y-6">
                <h3 className="font-black text-2xl">Nova Escola</h3>
                <input name="schoolName" required placeholder="Nome da Escola" className="w-full bg-slate-900 text-white border-2 border-slate-700 rounded-2xl px-6 py-4 font-bold outline-none" />
                <Button className="w-full py-4 font-black bg-indigo-600 rounded-2xl">Cadastrar</Button>
                <Button variant="ghost" type="button" onClick={() => setIsCreateSchoolModalOpen(false)} className="w-full text-slate-400">Cancelar</Button>
              </form>
+          </div>
+        </div>
+      )}
+
+      {isAddStudentModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[200] flex items-center justify-center p-6 overflow-y-auto">
+          <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in duration-500">
+            <div className="p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="font-black text-3xl text-slate-900">Importar Alunos</h3>
+              <button onClick={() => setIsAddStudentModalOpen(false)} className="bg-white p-3 rounded-2xl text-slate-400 hover:text-rose-500"><X className="w-7 h-7" /></button>
+            </div>
+            <div className="p-10">
+              <textarea className="w-full h-80 bg-slate-900 text-white border border-slate-700 rounded-[2rem] p-8 text-lg font-mono outline-none" placeholder="Digite um nome por linha..." value={bulkStudentNames} onChange={e => setBulkStudentNames(e.target.value)} />
+            </div>
+            <div className="p-10 bg-slate-50 border-t border-slate-100 flex gap-6">
+              <Button className="flex-1 py-5 font-black bg-indigo-600 rounded-3xl" onClick={handleAddStudents}>Gerar Alunos</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEditActivityModalOpen && editingActivity && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[200] flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden">
+            <div className="p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="font-black text-2xl text-slate-900">Atividade {editingActivity.index + 1}</h3>
+              <button onClick={() => setIsEditActivityModalOpen(false)} className="text-slate-400"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-10 space-y-6">
+              <div><label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Data</label><input type="text" placeholder="Ex: 12/05" className="w-full bg-slate-900 text-white rounded-2xl px-6 py-4 font-bold outline-none" value={tempMeta.date} onChange={e => setTempMeta({...tempMeta, date: e.target.value})} /></div>
+              <div><label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Conteúdo</label><textarea rows={3} placeholder="Assunto..." className="w-full bg-slate-900 text-white rounded-2xl px-6 py-4 font-bold outline-none resize-none" value={tempMeta.content} onChange={e => setTempMeta({...tempMeta, content: e.target.value})} /></div>
+            </div>
+            <div className="p-10 bg-slate-50 border-t border-slate-100"><Button className="w-full py-4 font-black bg-indigo-600 rounded-2xl" onClick={handleSaveActivityMeta}>Salvar</Button></div>
           </div>
         </div>
       )}
