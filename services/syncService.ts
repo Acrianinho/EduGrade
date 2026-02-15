@@ -1,24 +1,47 @@
 
-import { ClassRoom } from "../types";
+import { ClassRoom, School } from "../types";
+import { supabase } from "./supabaseClient";
 
-// Simula uma API de backend
-const MOCK_API_DELAY = 1500;
+export const syncDataWithServer = async (schools: School[], classes: ClassRoom[]): Promise<boolean> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
 
-export const syncDataWithServer = async (data: ClassRoom[]): Promise<boolean> => {
-  // Simula o envio dos dados para um servidor central
-  return new Promise((resolve) => {
-    console.log("Sincronizando com o servidor...", data);
-    
-    // Simula latência de rede
-    setTimeout(() => {
-      // Simula sucesso na sincronização
-      // Em um cenário real, aqui faríamos um POST para /api/sync
-      localStorage.setItem('edugrade_last_sync_timestamp', Date.now().toString());
-      resolve(true);
-    }, MOCK_API_DELAY);
-  });
+  try {
+    const { error } = await supabase
+      .from('user_data')
+      .upsert({ 
+        user_id: user.id, 
+        payload: { schools, classes },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error("Sync Error:", e);
+    return false;
+  }
+};
+
+export const fetchRemoteData = async (): Promise<{ schools: School[], classes: ClassRoom[] } | null> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('user_data')
+      .select('payload')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows found"
+    return data?.payload || null;
+  } catch (e) {
+    console.error("Fetch Error:", e);
+    return null;
+  }
 };
 
 export const checkConnectivity = (): boolean => {
-  return navigator.onLine;
+  return typeof navigator !== 'undefined' && navigator.onLine;
 };
