@@ -276,12 +276,32 @@ const App: React.FC = () => {
     updateClass({ ...currentClass, activityCount: newCount, activityMetadata: updatedMetadata, students: updatedStudents });
   };
 
+  const handleRemoveActivityColumn = () => {
+    if (!currentClass || currentClass.activityCount <= 1) return;
+    const newCount = currentClass.activityCount - 1;
+    const updatedMetadata = { ...currentClass.activityMetadata };
+    [1, 2, 3, 4].forEach(b => {
+      // @ts-ignore
+      updatedMetadata[b] = updatedMetadata[b].slice(0, -1);
+    });
+    const updatedStudents = currentClass.students.map(student => ({
+      ...student,
+      bimesters: {
+        1: { ...student.bimesters[1], activities: student.bimesters[1].activities.slice(0, -1) },
+        2: { ...student.bimesters[2], activities: student.bimesters[2].activities.slice(0, -1) },
+        3: { ...student.bimesters[3], activities: student.bimesters[3].activities.slice(0, -1) },
+        4: { ...student.bimesters[4], activities: student.bimesters[4].activities.slice(0, -1) },
+      }
+    }));
+    updateClass({ ...currentClass, activityCount: newCount, activityMetadata: updatedMetadata, students: updatedStudents });
+  };
+
   const calcBimesterAvg = (period: GradePeriod) => {
     const validActs = period.activities.filter(v => v !== null) as number[];
-    const avgActs = validActs.length > 0 ? validActs.reduce((a, b) => a + b, 0) / validActs.length : 0;
+    const sumActs = validActs.reduce((a, b) => a + b, 0);
     const exam = period.exam || 0;
     const extra = period.extra || 0;
-    return ((avgActs + exam) / 2) + extra;
+    return ((sumActs + exam) / 2) + extra;
   };
 
   const getEffectiveBimesterGrade = (student: Student, b: 1 | 2 | 3 | 4) => {
@@ -504,9 +524,14 @@ const App: React.FC = () => {
           </div>
           <div className="flex flex-wrap gap-2">
             {activeTab !== 'annual' && (
-              <Button variant="secondary" onClick={handleAddActivityColumn} size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700 border-none">
-                <ListPlus className="w-4 h-4 mr-2" /> + Atividade
-              </Button>
+              <>
+                <Button variant="secondary" onClick={handleRemoveActivityColumn} size="sm" className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100">
+                  <Trash2 className="w-4 h-4 mr-2" /> Remover Atividade
+                </Button>
+                <Button variant="secondary" onClick={handleAddActivityColumn} size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700 border-none">
+                  <ListPlus className="w-4 h-4 mr-2" /> + Atividade
+                </Button>
+              </>
             )}
             <Button variant="secondary" onClick={() => setIsAddStudentModalOpen(true)} size="sm" className="font-bold border-slate-300"><UserPlus className="w-4 h-4 mr-2" /> Importar Alunos</Button>
             <Button disabled={!isOnline} onClick={async () => { setIsAnalyzing(true); setAiReport(await analyzeClassPerformance(currentClass)); setIsAnalyzing(false); }} size="sm" className={`bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 border-none text-white shadow-md ${!isOnline && 'opacity-50 grayscale'}`}>
