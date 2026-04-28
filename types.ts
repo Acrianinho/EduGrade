@@ -13,6 +13,7 @@ export interface GradePeriod {
 export interface Student {
   id: string;
   name: string;
+  _orderIndex?: number;
   bimesters: {
     1: GradePeriod;
     2: GradePeriod;

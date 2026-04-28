@@ -533,7 +533,9 @@ const App: React.FC = () => {
             <table className="w-full text-left text-sm border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-8 py-5 font-black text-slate-700 min-w-[260px] sticky left-0 bg-slate-50 z-20 shadow-[4px_0_10px_rgba(0,0,0,0.03)] uppercase tracking-wider">Estudante</th>
+                  <th className="px-8 py-5 font-black text-slate-700 min-w-[260px] sticky left-0 bg-slate-50 z-20 shadow-[4px_0_10px_rgba(0,0,0,0.03)] uppercase tracking-wider">
+                    <span className="text-slate-400 mr-2">Nº</span> Aluno
+                  </th>
                   {activeTab !== 'annual' ? (
                     <>
                       {Array.from({ length: currentClass.activityCount }).map((_, i) => {
@@ -570,7 +572,8 @@ const App: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {currentClass.students.map(student => {
+                {currentClass.students.map((student, idx) => {
+                  const callNumber = String(idx + 1).padStart(2, '0');
                   if (activeTab === 'annual') {
                     const b1 = getEffectiveBimesterGrade(student, 1);
                     const b2 = getEffectiveBimesterGrade(student, 2);
@@ -583,7 +586,10 @@ const App: React.FC = () => {
                     const approved = mediaFinal >= 5;
                     return (
                       <tr key={student.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-8 py-5 font-bold text-slate-800 sticky left-0 bg-white z-20 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">{student.name}</td>
+                        <td className="px-8 py-5 font-bold text-slate-800 sticky left-0 bg-white z-20 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">
+                          <span className="text-slate-400 font-mono text-xs mr-3 font-normal">{callNumber}</span>
+                          {student.name}
+                        </td>
                         <td className="px-3 py-5 text-center text-slate-400 font-bold">{b1.toFixed(1)}</td>
                         <td className="px-3 py-5 text-center text-slate-400 font-bold">{b2.toFixed(1)}</td>
                         <td className="px-3 py-3 text-center bg-amber-50/30">
@@ -620,13 +626,16 @@ const App: React.FC = () => {
                   const avg = calcBimesterAvg(period);
                   return (
                     <tr key={student.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-8 py-5 font-bold text-slate-800 sticky left-0 bg-white z-20 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">{student.name}</td>
-                      {period.activities.map((val, idx) => (
-                        <td key={idx} className="px-1.5 py-3 text-center">
+                      <td className="px-8 py-5 font-bold text-slate-800 sticky left-0 bg-white z-20 shadow-[4px_0_10px_rgba(0,0,0,0.02)]">
+                        <span className="text-slate-400 font-mono text-xs mr-3 font-normal">{callNumber}</span>
+                        {student.name}
+                      </td>
+                      {period.activities.map((val, actIdx) => (
+                        <td key={actIdx} className="px-1.5 py-3 text-center">
                           <input type="number" step="0.1" className="w-16 text-center bg-slate-900 text-white border border-slate-700 rounded-xl py-2 font-black outline-none" value={val ?? ''} onChange={e => {
                             const newVal = e.target.value === '' ? null : parseFloat(e.target.value);
                             const updatedActs = [...period.activities];
-                            updatedActs[idx] = newVal;
+                            updatedActs[actIdx] = newVal;
                             updateClass({...currentClass, students: currentClass.students.map(s => s.id === student.id ? {...s, bimesters: {...s.bimesters, [bimesterKey]: {...period, activities: updatedActs}}} : s)});
                           }} />
                         </td>

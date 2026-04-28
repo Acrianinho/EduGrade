@@ -39,13 +39,13 @@ export const syncDataWithServer = async (schools: School[], classes: ClassRoom[]
       // 3. Sincronizar Alunos (Extraídos de dentro das turmas)
       const allStudents: any[] = [];
       classes.forEach(cls => {
-        cls.students.forEach(std => {
+        cls.students.forEach((std, index) => {
           allStudents.push({
             id: std.id,
             class_id: cls.id, // ID da Turma Vinculado
             user_id: userId,
             name: std.name,
-            bimesters: std.bimesters,
+            bimesters: { ...std.bimesters, _orderIndex: index },
             rec1: std.rec1,
             rec2: std.rec2,
             final_exam: std.finalExam
@@ -90,16 +90,25 @@ export const fetchRemoteData = async (): Promise<{ schools: School[], classes: C
 
     const formattedClasses: ClassRoom[] = (classData || []).map(c => {
       // Filtra os alunos que pertencem a esta turma específica
-      const studentsInClass: Student[] = (studentData || [])
+      let studentsInClass: Student[] = (studentData || [])
         .filter(std => std.class_id === c.id)
-        .map(std => ({
-          id: std.id,
-          name: std.name,
-          bimesters: std.bimesters,
-          rec1: std.rec1,
-          rec2: std.rec2,
-          finalExam: std.final_exam
-        }));
+        .map(std => {
+          const { _orderIndex, ...restBimesters } = std.bimesters || {};
+          return {
+            id: std.id,
+            name: std.name,
+            bimesters: restBimesters,
+            _orderIndex: typeof _orderIndex === 'number' ? _orderIndex : 99999,
+            rec1: std.rec1,
+            rec2: std.rec2,
+            finalExam: std.final_exam
+          };
+        });
+
+      studentsInClass.sort((a, b) => {
+        if (a._orderIndex !== b._orderIndex) return (a._orderIndex || 0) - (b._orderIndex || 0);
+        return a.name.localeCompare(b.name);
+      });
 
       return {
         id: c.id,
