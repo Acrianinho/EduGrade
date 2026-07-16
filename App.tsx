@@ -308,20 +308,14 @@ const App: React.FC = () => {
     const raw = calcBimesterAvg(student.bimesters[b]);
     if (b === 1 || b === 2) {
       if (student.rec1 === null) return raw;
-      const b1 = calcBimesterAvg(student.bimesters[1]);
-      const b2 = calcBimesterAvg(student.bimesters[2]);
       const rec = student.rec1;
-      if (b === 1 && b1 < rec && b1 <= b2) return rec;
-      if (b === 2 && b2 < rec && b2 < b1) return rec;
+      if (raw < rec) return rec;
       return raw;
     }
     if (b === 3 || b === 4) {
       if (student.rec2 === null) return raw;
-      const b3 = calcBimesterAvg(student.bimesters[3]);
-      const b4 = calcBimesterAvg(student.bimesters[4]);
       const rec = student.rec2;
-      if (b === 3 && b3 < rec && b3 <= b4) return rec;
-      if (b === 4 && b4 < rec && b4 < b3) return rec;
+      if (raw < rec) return rec;
       return raw;
     }
     return raw;
